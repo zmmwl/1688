@@ -32,21 +32,25 @@ BROWSER_DATA_DIR = os.path.join(os.path.dirname(__file__), ".browser_data_1688")
 def build_extraction_prompt(page_text: str, category: Category, top_n: int) -> str:
     """构建 LLM 提取 prompt，从页面文本中提取商品信息"""
     return (
-        f"以下是从 1688 搜索结果页面提取的原始文本。请从中提取商品信息。\n\n"
-        f"提取以下字段，以 JSON 数组格式返回：\n"
-        f"- title: 商品标题\n"
-        f"- price: 价格（仅数字，如 3.5）\n"
-        f"- min_order: 起订量（如 ≥3个）\n"
-        f"- supplier: 供应商名称\n"
-        f"- sales_volume: 销量信息（如 已售1000+件）\n"
-        f"- repurchase_rate: 回头率（如 回头率58%）\n\n"
-        f"筛选条件：\n"
-        f"- 价格范围: {category.price_min}-{category.price_max} 元/{category.price_unit}\n"
-        f"- 起订量范围: {category.min_order_low}-{category.min_order_high} {category.min_order_unit}\n"
-        f"- 回头率 >= {category.repurchase_rate_threshold}%\n\n"
-        f"最多返回 {top_n} 个商品。\n"
-        f"跳过标题明显是公司名（如以'有限公司''工厂''商行'结尾）的条目。\n"
-        f"仅返回 JSON 数组，不要其他文字。\n\n"
+        f"你是一个电商数据提取助手。以下是从 1688 搜索结果页面提取的原始文本，"
+        f"每段文本对应一个商品。请从中提取商品信息。\n\n"
+        f"输出格式为 JSON 数组，每个元素包含以下字段：\n"
+        f"- title: 商品标题（字符串）\n"
+        f"- price: 价格（数字，如 3.5）\n"
+        f"- min_order: 起订量（字符串，如 '≥3个'）\n"
+        f"- supplier: 供应商名称（字符串）\n"
+        f"- sales_volume: 销量信息（字符串，如 '已售1000+件'）\n"
+        f"- repurchase_rate: 回头率（字符串，如 '回头率58%'）\n\n"
+        f"输出样例：\n"
+        f'[{{"title": "超软粉扑干湿两用不吃粉", "price": 3.5, "min_order": "≥3个", '
+        f'"supplier": "广州某某化妆品有限公司", "sales_volume": "已售1000+件", '
+        f'"repurchase_rate": "回头率58%"}}]\n\n'
+        f"注意事项：\n"
+        f"1. 从每段文本中提取一个商品，最多返回 {top_n} 个\n"
+        f"2. 跳过标题明显是公司名（如以'有限公司''工厂''商行'结尾且长度<20）的条目\n"
+        f"3. 如果某个字段在文本中找不到，填空字符串 ''\n"
+        f"4. 即使商品不完全满足理想条件，只要有商品标题和价格就应返回\n"
+        f"5. 仅返回 JSON 数组，不要包含任何其他文字、解释或 markdown 标记\n\n"
         f"--- 页面原始文本 ---\n"
         f"{page_text}"
     )
@@ -118,11 +122,14 @@ def call_llm(prompt: str) -> str:
     """调用智谱 GLM 提取商品信息"""
     client = OpenAI(
         api_key=os.environ["ZHIPUAI_API_KEY"],
-        base_url="https://open.bigmodel.cn/api/paas/v4",
+        # base_url="https://open.bigmodel.cn/api/paas/v4",
+        base_url="https://open.bigmodel.cn/api/coding/paas/v4",
+        
     )
 
     response = client.chat.completions.create(
-        model="glm-4-plus",
+        # model="glm-4-plus",
+        model="glm-5-turbo",
         temperature=0.1,
         messages=[
             {"role": "system", "content": "你是一个专业的电商数据提取助手。只返回 JSON 数组，不要其他文字。"},
@@ -262,6 +269,7 @@ async def run(top_n=10, category_ids=None):
                         break
                     else:
                         print(f"    第 {attempt} 次 LLM 返回无有效结果")
+                        print(f"    LLM 原始响应（前300字）: {(llm_response or '')[:300]}")
                         if attempt < 2:
                             await asyncio.sleep(2)
                 except Exception as e:
