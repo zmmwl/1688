@@ -1,5 +1,10 @@
 .venv/
 .browser_data/
+.browser_data_1688/
 .env
 __pycache__/
 *.pyc
+output_1688_*.json
+debug_*.png
+debug_*.html
+.vscode/
